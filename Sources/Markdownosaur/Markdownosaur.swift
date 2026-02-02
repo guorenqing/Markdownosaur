@@ -5,13 +5,20 @@
 //  Created by Christian Selig on 2021-11-02.
 //
 
+import Foundation
+import Markdown
+
 #if canImport(AppKit)
 import AppKit
-#endif
-#if canImport(UIKit)
+public typealias PlatformFont = NSFont
+public typealias PlatformColor = NSColor
+public typealias PlatformFontDescriptor = NSFontDescriptor
+#elseif canImport(UIKit)
 import UIKit
+public typealias PlatformFont = UIFont
+public typealias PlatformColor = UIColor
+public typealias PlatformFontDescriptor = UIFontDescriptor
 #endif
-import Markdown
 
 public struct Markdownosaur: MarkupVisitor {
     let baseFontSize: CGFloat = 15.0
@@ -33,7 +40,9 @@ public struct Markdownosaur: MarkupVisitor {
     }
     
     mutating public func visitText(_ text: Text) -> NSAttributedString {
-        return NSAttributedString(string: text.plainText, attributes: [.font: UIFont.systemFont(ofSize: baseFontSize, weight: .regular)])
+        return NSAttributedString(string: text.plainText, attributes: [
+            .font: PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
+        ])
     }
     
     mutating public func visitEmphasis(_ emphasis: Emphasis) -> NSAttributedString {
@@ -68,7 +77,9 @@ public struct Markdownosaur: MarkupVisitor {
         }
         
         if paragraph.hasSuccessor {
-            result.append(paragraph.isContainedInList ? .singleNewline(withFontSize: baseFontSize) : .doubleNewline(withFontSize: baseFontSize))
+            result.append(paragraph.isContainedInList ? 
+                .singleNewline(withFontSize: baseFontSize) : 
+                .doubleNewline(withFontSize: baseFontSize))
         }
         
         return result
@@ -105,11 +116,33 @@ public struct Markdownosaur: MarkupVisitor {
     }
     
     mutating public func visitInlineCode(_ inlineCode: InlineCode) -> NSAttributedString {
-        return NSAttributedString(string: inlineCode.code, attributes: [.font: UIFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular), .foregroundColor: UIColor.systemGray])
+        #if canImport(AppKit)
+        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let systemGray = PlatformColor.systemGray
+        #else
+        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let systemGray = PlatformColor.systemGray
+        #endif
+        
+        return NSAttributedString(string: inlineCode.code, attributes: [
+            .font: monospacedFont,
+            .foregroundColor: systemGray
+        ])
     }
     
     public func visitCodeBlock(_ codeBlock: CodeBlock) -> NSAttributedString {
-        let result = NSMutableAttributedString(string: codeBlock.code, attributes: [.font: UIFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular), .foregroundColor: UIColor.systemGray])
+        #if canImport(AppKit)
+        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let systemGray = PlatformColor.systemGray
+        #else
+        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let systemGray = PlatformColor.systemGray
+        #endif
+        
+        let result = NSMutableAttributedString(string: codeBlock.code, attributes: [
+            .font: monospacedFont,
+            .foregroundColor: systemGray
+        ])
         
         if codeBlock.hasSuccessor {
             result.append(.singleNewline(withFontSize: baseFontSize))
@@ -133,7 +166,7 @@ public struct Markdownosaur: MarkupVisitor {
     mutating public func visitUnorderedList(_ unorderedList: UnorderedList) -> NSAttributedString {
         let result = NSMutableAttributedString()
         
-        let font = UIFont.systemFont(ofSize: baseFontSize, weight: .regular)
+        let font = PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
                 
         for listItem in unorderedList.listItems {
             var listItemAttributes: [NSAttributedString.Key: Any] = [:]
@@ -155,7 +188,7 @@ public struct Markdownosaur: MarkupVisitor {
             listItemParagraphStyle.headIndent = secondTabLocation
             
             listItemAttributes[.paragraphStyle] = listItemParagraphStyle
-            listItemAttributes[.font] = UIFont.systemFont(ofSize: baseFontSize, weight: .regular)
+            listItemAttributes[.font] = PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
             listItemAttributes[.listDepth] = unorderedList.listDepth
             
             let listItemAttributedString = visit(listItem).mutableCopy() as! NSMutableAttributedString
@@ -191,8 +224,8 @@ public struct Markdownosaur: MarkupVisitor {
         for (index, listItem) in orderedList.listItems.enumerated() {
             var listItemAttributes: [NSAttributedString.Key: Any] = [:]
             
-            let font = UIFont.systemFont(ofSize: baseFontSize, weight: .regular)
-            let numeralFont = UIFont.monospacedDigitSystemFont(ofSize: baseFontSize, weight: .regular)
+            let font = PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
+            let numeralFont = PlatformFont.monospacedDigitSystemFont(ofSize: baseFontSize, weight: .regular)
             
             let listItemParagraphStyle = NSMutableParagraphStyle()
             
@@ -232,7 +265,9 @@ public struct Markdownosaur: MarkupVisitor {
         }
         
         if orderedList.hasSuccessor {
-            result.append(orderedList.isContainedInList ? .singleNewline(withFontSize: baseFontSize) : .doubleNewline(withFontSize: baseFontSize))
+            result.append(orderedList.isContainedInList ? 
+                .singleNewline(withFontSize: baseFontSize) : 
+                .doubleNewline(withFontSize: baseFontSize))
         }
         
         return result
@@ -254,13 +289,17 @@ public struct Markdownosaur: MarkupVisitor {
             quoteParagraphStyle.headIndent = leftMarginOffset
             
             quoteAttributes[.paragraphStyle] = quoteParagraphStyle
-            quoteAttributes[.font] = UIFont.systemFont(ofSize: baseFontSize, weight: .regular)
+            quoteAttributes[.font] = PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
             quoteAttributes[.listDepth] = blockQuote.quoteDepth
             
             let quoteAttributedString = visit(child).mutableCopy() as! NSMutableAttributedString
             quoteAttributedString.insert(NSAttributedString(string: "\t", attributes: quoteAttributes), at: 0)
             
-            quoteAttributedString.addAttribute(.foregroundColor, value: UIColor.systemGray)
+            #if canImport(AppKit)
+            quoteAttributedString.addAttribute(.foregroundColor, value: PlatformColor.systemGray)
+            #else
+            quoteAttributedString.addAttribute(.foregroundColor, value: PlatformColor.systemGray)
+            #endif
             
             result.append(quoteAttributedString)
         }
@@ -273,62 +312,116 @@ public struct Markdownosaur: MarkupVisitor {
     }
 }
 
-// MARK: - Extensions Land
+// MARK: - 扩展部分，需要跨平台适配
 
 extension NSMutableAttributedString {
     func applyEmphasis() {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
-            guard let font = value as? UIFont else { return }
+            guard let font = value as? PlatformFont else { return }
             
-            let newFont = font.apply(newTraits: .traitItalic)
+            let newFont = font.apply(newTraits: .italic, newPointSize: nil)
             addAttribute(.font, value: newFont, range: range)
         }
     }
     
     func applyStrong() {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
-            guard let font = value as? UIFont else { return }
+            guard let font = value as? PlatformFont else { return }
             
-            let newFont = font.apply(newTraits: .traitBold)
+            let newFont = font.apply(newTraits: .bold, newPointSize: nil)
             addAttribute(.font, value: newFont, range: range)
         }
     }
     
     func applyLink(withURL url: URL?) {
-        addAttribute(.foregroundColor, value: UIColor.systemBlue)
+        #if canImport(AppKit)
+        addAttribute(.foregroundColor, value: PlatformColor.systemBlue)
+        #else
+        addAttribute(.foregroundColor, value: PlatformColor.systemBlue)
+        #endif
         
         if let url = url {
             addAttribute(.link, value: url)
         }
     }
     
-    func applyBlockquote() {
-        addAttribute(.foregroundColor, value: UIColor.systemGray)
-    }
-    
     func applyHeading(withLevel headingLevel: Int) {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
-            guard let font = value as? UIFont else { return }
+            guard let font = value as? PlatformFont else { return }
             
-            let newFont = font.apply(newTraits: .traitBold, newPointSize: 28.0 - CGFloat(headingLevel * 2))
+            let newFont = font.apply(newTraits: .bold, newPointSize: 28.0 - CGFloat(headingLevel * 2))
             addAttribute(.font, value: newFont, range: range)
         }
     }
     
     func applyStrikethrough() {
+        #if canImport(AppKit)
         addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue)
+        #else
+        addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue)
+        #endif
     }
 }
 
-extension UIFont {
-    func apply(newTraits: UIFontDescriptor.SymbolicTraits, newPointSize: CGFloat? = nil) -> UIFont {
-        var existingTraits = fontDescriptor.symbolicTraits
-        existingTraits.insert(newTraits)
+extension PlatformFont {
+    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> PlatformFont {
+        #if canImport(AppKit)
+        // AppKit (macOS) 处理
+        var fontTraits: NSFontDescriptor.SymbolicTraits = []
         
-        guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { return self }
-        return UIFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
+        if newTraits.contains(.italic) {
+            fontTraits.insert(.italic)
+        }
+        if newTraits.contains(.bold) {
+            fontTraits.insert(.bold)
+        }
+        
+        var existingTraits = fontDescriptor.symbolicTraits
+        existingTraits.formUnion(fontTraits)
+        
+        guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
+            return self 
+        }
+        return PlatformFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize) ?? self
+        #else
+        // UIKit (iOS) 处理
+        var existingTraits = fontDescriptor.symbolicTraits
+        existingTraits.insert(newTraits.toUIFontTraits())
+        
+        guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
+            return self 
+        }
+        return PlatformFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
+        #endif
     }
 }
+
+// MARK: - 字体特质枚举，统一处理
+public struct FontTrait: OptionSet {
+    public let rawValue: Int
+    
+    public static let italic = FontTrait(rawValue: 1 << 0)
+    public static let bold = FontTrait(rawValue: 1 << 1)
+    
+    public init(rawValue: Int) {
+        self.rawValue = rawValue
+    }
+}
+
+#if canImport(UIKit)
+extension FontTrait {
+    func toUIFontTraits() -> UIFontDescriptor.SymbolicTraits {
+        var traits: UIFontDescriptor.SymbolicTraits = []
+        if contains(.italic) {
+            traits.insert(.traitItalic)
+        }
+        if contains(.bold) {
+            traits.insert(.traitBold)
+        }
+        return traits
+    }
+}
+#endif
 
 extension ListItemContainer {
     /// Depth of the list if nested within others. Index starts at 0.
@@ -407,10 +500,14 @@ extension Markup {
 
 extension NSAttributedString {
     static func singleNewline(withFontSize fontSize: CGFloat) -> NSAttributedString {
-        return NSAttributedString(string: "\n", attributes: [.font: UIFont.systemFont(ofSize: fontSize, weight: .regular)])
+        return NSAttributedString(string: "\n", attributes: [
+            .font: PlatformFont.systemFont(ofSize: fontSize, weight: .regular)
+        ])
     }
     
     static func doubleNewline(withFontSize fontSize: CGFloat) -> NSAttributedString {
-        return NSAttributedString(string: "\n\n", attributes: [.font: UIFont.systemFont(ofSize: fontSize, weight: .regular)])
+        return NSAttributedString(string: "\n\n", attributes: [
+            .font: PlatformFont.systemFont(ofSize: fontSize, weight: .regular)
+        ])
     }
 }
