@@ -5,7 +5,12 @@
 //  Created by Christian Selig on 2021-11-02.
 //
 
+#if canImport(AppKit)
+import AppKit
+#endif
+#if canImport(UIKit)
 import UIKit
+#endif
 import Markdown
 
 public struct Markdownosaur: MarkupVisitor {
