@@ -3,7 +3,7 @@
 //  Markdownosaur
 //
 //  Created by Christian Selig on 2021-11-02.
-//
+//  修改：支持 macOS 10.12+
 
 import Foundation
 import Markdown
@@ -12,12 +12,66 @@ import Markdown
 import AppKit
 public typealias PlatformFont = NSFont
 public typealias PlatformColor = NSColor
-public typealias PlatformFontDescriptor = NSFontDescriptor
+
+// 兼容性扩展
+extension PlatformFont {
+    static func compatibleMonospacedSystemFont(ofSize fontSize: CGFloat, weight: NSFont.Weight) -> NSFont {
+        if #available(macOS 10.15, *) {
+            return NSFont.monospacedSystemFont(ofSize: fontSize, weight: weight)
+        } else {
+            // macOS 10.12-10.14 的回退方案
+            if let menloFont = NSFont(name: "Menlo", size: fontSize) {
+                return menloFont
+            } else if let monacoFont = NSFont(name: "Monaco", size: fontSize) {
+                return monacoFont
+            } else if let courierFont = NSFont(name: "Courier", size: fontSize) {
+                return courierFont
+            } else {
+                // 如果所有等宽字体都没有，使用系统字体并调整字符间距
+                let systemFont = NSFont.systemFont(ofSize: fontSize, weight: weight)
+                return systemFont
+            }
+        }
+    }
+    
+    static func compatibleMonospacedDigitSystemFont(ofSize fontSize: CGFloat, weight: NSFont.Weight) -> NSFont {
+        if #available(macOS 10.11, *) {
+            return NSFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
+        } else {
+            // macOS 10.10 及更早版本
+            if let menloFont = NSFont(name: "Menlo", size: fontSize) {
+                return menloFont
+            } else {
+                let systemFont = NSFont.systemFont(ofSize: fontSize, weight: weight)
+                return systemFont
+            }
+        }
+    }
+}
+
 #elseif canImport(UIKit)
 import UIKit
 public typealias PlatformFont = UIFont
 public typealias PlatformColor = UIColor
-public typealias PlatformFontDescriptor = UIFontDescriptor
+
+// iOS 不需要兼容性扩展，直接使用原方法
+extension PlatformFont {
+    static func compatibleMonospacedSystemFont(ofSize fontSize: CGFloat, weight: UIFont.Weight) -> UIFont {
+        if #available(iOS 13.0, *) {
+            return UIFont.monospacedSystemFont(ofSize: fontSize, weight: weight)
+        } else {
+            if let courierFont = UIFont(name: "Courier", size: fontSize) {
+                return courierFont
+            } else {
+                return UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
+            }
+        }
+    }
+    
+    static func compatibleMonospacedDigitSystemFont(ofSize fontSize: CGFloat, weight: UIFont.Weight) -> UIFont {
+        return UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
+    }
+}
 #endif
 
 public struct Markdownosaur: MarkupVisitor {
@@ -117,10 +171,16 @@ public struct Markdownosaur: MarkupVisitor {
     
     mutating public func visitInlineCode(_ inlineCode: InlineCode) -> NSAttributedString {
         #if canImport(AppKit)
-        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
+            ofSize: baseFontSize - 1.0, 
+            weight: .regular
+        )
         let systemGray = PlatformColor.systemGray
         #else
-        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
+            ofSize: baseFontSize - 1.0, 
+            weight: .regular
+        )
         let systemGray = PlatformColor.systemGray
         #endif
         
@@ -132,10 +192,16 @@ public struct Markdownosaur: MarkupVisitor {
     
     public func visitCodeBlock(_ codeBlock: CodeBlock) -> NSAttributedString {
         #if canImport(AppKit)
-        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
+            ofSize: baseFontSize - 1.0, 
+            weight: .regular
+        )
         let systemGray = PlatformColor.systemGray
         #else
-        let monospacedFont = PlatformFont.monospacedSystemFont(ofSize: baseFontSize - 1.0, weight: .regular)
+        let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
+            ofSize: baseFontSize - 1.0, 
+            weight: .regular
+        )
         let systemGray = PlatformColor.systemGray
         #endif
         
@@ -225,7 +291,17 @@ public struct Markdownosaur: MarkupVisitor {
             var listItemAttributes: [NSAttributedString.Key: Any] = [:]
             
             let font = PlatformFont.systemFont(ofSize: baseFontSize, weight: .regular)
-            let numeralFont = PlatformFont.monospacedDigitSystemFont(ofSize: baseFontSize, weight: .regular)
+            #if canImport(AppKit)
+            let numeralFont = PlatformFont.compatibleMonospacedDigitSystemFont(
+                ofSize: baseFontSize, 
+                weight: .regular
+            )
+            #else
+            let numeralFont = PlatformFont.compatibleMonospacedDigitSystemFont(
+                ofSize: baseFontSize, 
+                weight: .regular
+            )
+            #endif
             
             let listItemParagraphStyle = NSMutableParagraphStyle()
             
@@ -312,14 +388,18 @@ public struct Markdownosaur: MarkupVisitor {
     }
 }
 
-// MARK: - 扩展部分，需要跨平台适配
+// MARK: - 扩展部分
 
 extension NSMutableAttributedString {
     func applyEmphasis() {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
             guard let font = value as? PlatformFont else { return }
             
+            #if canImport(AppKit)
+            let newFont = font.apply(newTraits: [.italic], newPointSize: nil)
+            #else
             let newFont = font.apply(newTraits: .italic, newPointSize: nil)
+            #endif
             addAttribute(.font, value: newFont, range: range)
         }
     }
@@ -328,7 +408,11 @@ extension NSMutableAttributedString {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
             guard let font = value as? PlatformFont else { return }
             
+            #if canImport(AppKit)
+            let newFont = font.apply(newTraits: [.bold], newPointSize: nil)
+            #else
             let newFont = font.apply(newTraits: .bold, newPointSize: nil)
+            #endif
             addAttribute(.font, value: newFont, range: range)
         }
     }
@@ -349,7 +433,11 @@ extension NSMutableAttributedString {
         enumerateAttribute(.font, in: NSRange(location: 0, length: length), options: []) { value, range, stop in
             guard let font = value as? PlatformFont else { return }
             
+            #if canImport(AppKit)
+            let newFont = font.apply(newTraits: [.bold], newPointSize: 28.0 - CGFloat(headingLevel * 2))
+            #else
             let newFont = font.apply(newTraits: .bold, newPointSize: 28.0 - CGFloat(headingLevel * 2))
+            #endif
             addAttribute(.font, value: newFont, range: range)
         }
     }
@@ -363,62 +451,64 @@ extension NSMutableAttributedString {
     }
 }
 
-extension PlatformFont {
-    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> PlatformFont {
-        #if canImport(AppKit)
-        // AppKit (macOS) 处理
-        var fontTraits: NSFontDescriptor.SymbolicTraits = []
+#if canImport(AppKit)
+extension NSFont {
+    struct FontTrait: OptionSet {
+        let rawValue: Int
+        static let italic = FontTrait(rawValue: 1 << 0)
+        static let bold = FontTrait(rawValue: 1 << 1)
         
-        if newTraits.contains(.italic) {
-            fontTraits.insert(.italic)
-        }
-        if newTraits.contains(.bold) {
-            fontTraits.insert(.bold)
+        init(rawValue: Int) {
+            self.rawValue = rawValue
         }
         
+        func toSymbolicTraits() -> NSFontDescriptor.SymbolicTraits {
+            var traits: NSFontDescriptor.SymbolicTraits = []
+            if contains(.italic) {
+                traits.insert(.italic)
+            }
+            if contains(.bold) {
+                traits.insert(.bold)
+            }
+            return traits
+        }
+    }
+    
+    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> NSFont {
         var existingTraits = fontDescriptor.symbolicTraits
-        existingTraits.formUnion(fontTraits)
+        existingTraits.formUnion(newTraits.toSymbolicTraits())
         
         guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
             return self 
         }
-        return PlatformFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize) ?? self
-        #else
-        // UIKit (iOS) 处理
+        return NSFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize) ?? self
+    }
+}
+
+#elseif canImport(UIKit)
+extension UIFont {
+    enum FontTrait {
+        case italic
+        case bold
+        
+        func toSymbolicTraits() -> UIFontDescriptor.SymbolicTraits {
+            switch self {
+            case .italic:
+                return .traitItalic
+            case .bold:
+                return .traitBold
+            }
+        }
+    }
+    
+    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> UIFont {
         var existingTraits = fontDescriptor.symbolicTraits
-        existingTraits.insert(newTraits.toUIFontTraits())
+        existingTraits.insert(newTraits.toSymbolicTraits())
         
         guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
             return self 
         }
-        return PlatformFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
-        #endif
-    }
-}
-
-// MARK: - 字体特质枚举，统一处理
-public struct FontTrait: OptionSet {
-    public let rawValue: Int
-    
-    public static let italic = FontTrait(rawValue: 1 << 0)
-    public static let bold = FontTrait(rawValue: 1 << 1)
-    
-    public init(rawValue: Int) {
-        self.rawValue = rawValue
-    }
-}
-
-#if canImport(UIKit)
-extension FontTrait {
-    func toUIFontTraits() -> UIFontDescriptor.SymbolicTraits {
-        var traits: UIFontDescriptor.SymbolicTraits = []
-        if contains(.italic) {
-            traits.insert(.traitItalic)
-        }
-        if contains(.bold) {
-            traits.insert(.traitBold)
-        }
-        return traits
+        return UIFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
     }
 }
 #endif
