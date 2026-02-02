@@ -3,7 +3,8 @@
 //  Markdownosaur
 //
 //  Created by Christian Selig on 2021-11-02.
-//  修改：支持 macOS 10.12+
+//  修改：支持 macOS 10.12+ 和 iOS 11+
+//
 
 import Foundation
 import Markdown
@@ -12,6 +13,7 @@ import Markdown
 import AppKit
 public typealias PlatformFont = NSFont
 public typealias PlatformColor = NSColor
+public typealias PlatformFontWeight = NSFont.Weight
 
 // 兼容性扩展
 extension PlatformFont {
@@ -27,7 +29,7 @@ extension PlatformFont {
             } else if let courierFont = NSFont(name: "Courier", size: fontSize) {
                 return courierFont
             } else {
-                // 如果所有等宽字体都没有，使用系统字体并调整字符间距
+                // 如果所有等宽字体都没有，使用系统字体
                 let systemFont = NSFont.systemFont(ofSize: fontSize, weight: weight)
                 return systemFont
             }
@@ -47,14 +49,46 @@ extension PlatformFont {
             }
         }
     }
+    
+    // 字体特质应用
+    func apply(newTraits: NSFontDescriptor.SymbolicTraits, newPointSize: CGFloat? = nil) -> NSFont {
+        let existingTraits = fontDescriptor.symbolicTraits
+        let combinedTraits = existingTraits.union(newTraits)
+        
+        // macOS 的 withSymbolicTraits 返回非可选值
+        let newFontDescriptor = fontDescriptor.withSymbolicTraits(combinedTraits)
+        let fontSize = newPointSize ?? pointSize
+        
+        if let newFont = NSFont(descriptor: newFontDescriptor, size: fontSize) {
+            return newFont
+        }
+        
+        // 如果创建失败，尝试使用回退字体
+        var fontName = "Helvetica"
+        if newTraits.contains(.italic) && newTraits.contains(.bold) {
+            fontName = "Helvetica-BoldOblique"
+        } else if newTraits.contains(.bold) {
+            fontName = "Helvetica-Bold"
+        } else if newTraits.contains(.italic) {
+            fontName = "Helvetica-Oblique"
+        }
+        
+        if let fallbackFont = NSFont(name: fontName, size: fontSize) {
+            return fallbackFont
+        }
+        
+        // 最后回退到原始字体
+        return self
+    }
 }
 
 #elseif canImport(UIKit)
 import UIKit
 public typealias PlatformFont = UIFont
 public typealias PlatformColor = UIColor
+public typealias PlatformFontWeight = UIFont.Weight
 
-// iOS 不需要兼容性扩展，直接使用原方法
+// iOS 兼容性扩展
 extension PlatformFont {
     static func compatibleMonospacedSystemFont(ofSize fontSize: CGFloat, weight: UIFont.Weight) -> UIFont {
         if #available(iOS 13.0, *) {
@@ -71,8 +105,82 @@ extension PlatformFont {
     static func compatibleMonospacedDigitSystemFont(ofSize fontSize: CGFloat, weight: UIFont.Weight) -> UIFont {
         return UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: weight)
     }
+    
+    // 字体特质应用
+    func apply(newTraits: UIFontDescriptor.SymbolicTraits, newPointSize: CGFloat? = nil) -> UIFont {
+        var existingTraits = fontDescriptor.symbolicTraits
+        existingTraits.insert(newTraits)
+        
+        // iOS 的 withSymbolicTraits 返回可选值
+        if let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) {
+            return UIFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
+        }
+        
+        // 回退逻辑
+        var fontName = self.fontName
+        let fontSize = newPointSize ?? pointSize
+        
+        if newTraits.contains(.traitBold) && !fontName.lowercased().contains("bold") {
+            if fontName.lowercased().contains("italic") {
+                fontName = fontName.replacingOccurrences(of: "Italic", with: "BoldItalic")
+                fontName = fontName.replacingOccurrences(of: "italic", with: "BoldItalic")
+            } else {
+                fontName = fontName + "-Bold"
+            }
+        } else if newTraits.contains(.traitItalic) && !fontName.lowercased().contains("italic") {
+            if fontName.lowercased().contains("bold") {
+                fontName = fontName.replacingOccurrences(of: "Bold", with: "BoldItalic")
+                fontName = fontName.replacingOccurrences(of: "bold", with: "BoldItalic")
+            } else {
+                fontName = fontName + "-Italic"
+            }
+        }
+        
+        if let fallbackFont = UIFont(name: fontName, size: fontSize) {
+            return fallbackFont
+        }
+        
+        return self
+    }
 }
 #endif
+
+// 系统颜色兼容性扩展
+extension PlatformColor {
+    #if canImport(AppKit)
+    static var compatibleSystemGray: PlatformColor {
+        if #available(macOS 10.13, *) {
+            return PlatformColor.systemGray
+        } else {
+            return PlatformColor.gray
+        }
+    }
+    
+    static var compatibleSystemBlue: PlatformColor {
+        if #available(macOS 10.13, *) {
+            return PlatformColor.systemBlue
+        } else {
+            return PlatformColor.blue
+        }
+    }
+    #elseif canImport(UIKit)
+    static var compatibleSystemGray: PlatformColor {
+        if #available(iOS 13.0, *) {
+            return PlatformColor.systemGray
+        } else {
+            return PlatformColor.gray
+        }
+    }
+    
+    static var compatibleSystemBlue: PlatformColor {
+        if #available(iOS 13.0, *) {
+            return PlatformColor.systemBlue
+        } else {
+            return PlatformColor.blue
+        }
+    }
+    #endif
+}
 
 public struct Markdownosaur: MarkupVisitor {
     let baseFontSize: CGFloat = 15.0
@@ -175,18 +283,16 @@ public struct Markdownosaur: MarkupVisitor {
             ofSize: baseFontSize - 1.0, 
             weight: .regular
         )
-        let systemGray = PlatformColor.systemGray
         #else
         let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
             ofSize: baseFontSize - 1.0, 
             weight: .regular
         )
-        let systemGray = PlatformColor.systemGray
         #endif
         
         return NSAttributedString(string: inlineCode.code, attributes: [
             .font: monospacedFont,
-            .foregroundColor: systemGray
+            .foregroundColor: PlatformColor.compatibleSystemGray
         ])
     }
     
@@ -196,18 +302,16 @@ public struct Markdownosaur: MarkupVisitor {
             ofSize: baseFontSize - 1.0, 
             weight: .regular
         )
-        let systemGray = PlatformColor.systemGray
         #else
         let monospacedFont = PlatformFont.compatibleMonospacedSystemFont(
             ofSize: baseFontSize - 1.0, 
             weight: .regular
         )
-        let systemGray = PlatformColor.systemGray
         #endif
         
         let result = NSMutableAttributedString(string: codeBlock.code, attributes: [
             .font: monospacedFont,
-            .foregroundColor: systemGray
+            .foregroundColor: PlatformColor.compatibleSystemGray
         ])
         
         if codeBlock.hasSuccessor {
@@ -371,11 +475,7 @@ public struct Markdownosaur: MarkupVisitor {
             let quoteAttributedString = visit(child).mutableCopy() as! NSMutableAttributedString
             quoteAttributedString.insert(NSAttributedString(string: "\t", attributes: quoteAttributes), at: 0)
             
-            #if canImport(AppKit)
-            quoteAttributedString.addAttribute(.foregroundColor, value: PlatformColor.systemGray)
-            #else
-            quoteAttributedString.addAttribute(.foregroundColor, value: PlatformColor.systemGray)
-            #endif
+            quoteAttributedString.addAttribute(.foregroundColor, value: PlatformColor.compatibleSystemGray)
             
             result.append(quoteAttributedString)
         }
@@ -388,7 +488,7 @@ public struct Markdownosaur: MarkupVisitor {
     }
 }
 
-// MARK: - 扩展部分
+// MARK: - NSAttributedString 扩展
 
 extension NSMutableAttributedString {
     func applyEmphasis() {
@@ -396,9 +496,9 @@ extension NSMutableAttributedString {
             guard let font = value as? PlatformFont else { return }
             
             #if canImport(AppKit)
-            let newFont = font.apply(newTraits: [.italic], newPointSize: nil)
-            #else
             let newFont = font.apply(newTraits: .italic, newPointSize: nil)
+            #else
+            let newFont = font.apply(newTraits: .traitItalic, newPointSize: nil)
             #endif
             addAttribute(.font, value: newFont, range: range)
         }
@@ -409,20 +509,16 @@ extension NSMutableAttributedString {
             guard let font = value as? PlatformFont else { return }
             
             #if canImport(AppKit)
-            let newFont = font.apply(newTraits: [.bold], newPointSize: nil)
-            #else
             let newFont = font.apply(newTraits: .bold, newPointSize: nil)
+            #else
+            let newFont = font.apply(newTraits: .traitBold, newPointSize: nil)
             #endif
             addAttribute(.font, value: newFont, range: range)
         }
     }
     
     func applyLink(withURL url: URL?) {
-        #if canImport(AppKit)
-        addAttribute(.foregroundColor, value: PlatformColor.systemBlue)
-        #else
-        addAttribute(.foregroundColor, value: PlatformColor.systemBlue)
-        #endif
+        addAttribute(.foregroundColor, value: PlatformColor.compatibleSystemBlue)
         
         if let url = url {
             addAttribute(.link, value: url)
@@ -434,9 +530,9 @@ extension NSMutableAttributedString {
             guard let font = value as? PlatformFont else { return }
             
             #if canImport(AppKit)
-            let newFont = font.apply(newTraits: [.bold], newPointSize: 28.0 - CGFloat(headingLevel * 2))
-            #else
             let newFont = font.apply(newTraits: .bold, newPointSize: 28.0 - CGFloat(headingLevel * 2))
+            #else
+            let newFont = font.apply(newTraits: .traitBold, newPointSize: 28.0 - CGFloat(headingLevel * 2))
             #endif
             addAttribute(.font, value: newFont, range: range)
         }
@@ -449,69 +545,18 @@ extension NSMutableAttributedString {
         addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue)
         #endif
     }
-}
-
-#if canImport(AppKit)
-extension NSFont {
-    struct FontTrait: OptionSet {
-        let rawValue: Int
-        static let italic = FontTrait(rawValue: 1 << 0)
-        static let bold = FontTrait(rawValue: 1 << 1)
-        
-        init(rawValue: Int) {
-            self.rawValue = rawValue
-        }
-        
-        func toSymbolicTraits() -> NSFontDescriptor.SymbolicTraits {
-            var traits: NSFontDescriptor.SymbolicTraits = []
-            if contains(.italic) {
-                traits.insert(.italic)
-            }
-            if contains(.bold) {
-                traits.insert(.bold)
-            }
-            return traits
-        }
+    
+    // 辅助方法
+    func addAttribute(_ name: NSAttributedString.Key, value: Any) {
+        addAttribute(name, value: value, range: NSRange(location: 0, length: length))
     }
     
-    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> NSFont {
-        var existingTraits = fontDescriptor.symbolicTraits
-        existingTraits.formUnion(newTraits.toSymbolicTraits())
-        
-        guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
-            return self 
-        }
-        return NSFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize) ?? self
+    func addAttributes(_ attrs: [NSAttributedString.Key : Any]) {
+        addAttributes(attrs, range: NSRange(location: 0, length: length))
     }
 }
 
-#elseif canImport(UIKit)
-extension UIFont {
-    enum FontTrait {
-        case italic
-        case bold
-        
-        func toSymbolicTraits() -> UIFontDescriptor.SymbolicTraits {
-            switch self {
-            case .italic:
-                return .traitItalic
-            case .bold:
-                return .traitBold
-            }
-        }
-    }
-    
-    func apply(newTraits: FontTrait, newPointSize: CGFloat? = nil) -> UIFont {
-        var existingTraits = fontDescriptor.symbolicTraits
-        existingTraits.insert(newTraits.toSymbolicTraits())
-        
-        guard let newFontDescriptor = fontDescriptor.withSymbolicTraits(existingTraits) else { 
-            return self 
-        }
-        return UIFont(descriptor: newFontDescriptor, size: newPointSize ?? pointSize)
-    }
-}
-#endif
+// MARK: - Markdown 扩展
 
 extension ListItemContainer {
     /// Depth of the list if nested within others. Index starts at 0.
@@ -551,21 +596,6 @@ extension BlockQuote {
     }
 }
 
-extension NSAttributedString.Key {
-    static let listDepth = NSAttributedString.Key("ListDepth")
-    static let quoteDepth = NSAttributedString.Key("QuoteDepth")
-}
-
-extension NSMutableAttributedString {
-    func addAttribute(_ name: NSAttributedString.Key, value: Any) {
-        addAttribute(name, value: value, range: NSRange(location: 0, length: length))
-    }
-    
-    func addAttributes(_ attrs: [NSAttributedString.Key : Any]) {
-        addAttributes(attrs, range: NSRange(location: 0, length: length))
-    }
-}
-
 extension Markup {
     /// Returns true if this element has sibling elements after it.
     var hasSuccessor: Bool {
@@ -588,6 +618,13 @@ extension Markup {
     }
 }
 
+// MARK: - NSAttributedString 辅助扩展
+
+extension NSAttributedString.Key {
+    static let listDepth = NSAttributedString.Key("ListDepth")
+    static let quoteDepth = NSAttributedString.Key("QuoteDepth")
+}
+
 extension NSAttributedString {
     static func singleNewline(withFontSize fontSize: CGFloat) -> NSAttributedString {
         return NSAttributedString(string: "\n", attributes: [
@@ -601,3 +638,21 @@ extension NSAttributedString {
         ])
     }
 }
+
+// MARK: - 使用示例
+
+/*
+// iOS 和 macOS 通用的使用方式
+import Markdownosaur
+
+class ViewController: NSViewController { // 或 UIViewController
+    let textView: NSTextView // 或 UITextView
+    
+    func renderMarkdown(_ markdownText: String) {
+        let document = Document(parsing: markdownText)
+        var markdownosaur = Markdownosaur()
+        let attributedString = markdownosaur.attributedString(from: document)
+        textView.textStorage?.setAttributedString(attributedString)
+    }
+}
+*/
